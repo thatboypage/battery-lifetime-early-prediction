@@ -1,0 +1,31 @@
+{
+ "k": 0.5,
+ "median_r2_kinetic": 0.96274313180052,
+ "median_r2_flat": 0.9587121523187017,
+ "median_area_loss_pct": 15.667277473493435,
+ "median_capacity_loss_pct": 2.7343507768804782,
+ "median_flat_shift_mV": 4.917848841879449,
+ "median_ohmic_mV": 0.3186505287885666,
+ "spearman_life": {
+  "f_area_loss": -0.8744150184405709,
+  "s_capacity_loss": -0.8953154260026795,
+  "ohmic_mV": 0.06946765488908664,
+  "flat_shift_mV": -0.857536704066894,
+  "flat_capacity_loss": -0.8955136982021092
+ },
+ "lifetime_mape_pct": {
+  "physics: shift + capacity loss": {
+   "train": 16.89331417900954,
+   "primary": 20.72687772735181,
+   "secondary": 1219.3618795953905,
+   "primary_no_outlier": 19.715268668367372
+  },
+  "physics: shift only": {
+   "train": 17.02906822221398,
+   "primary": 23.33939326160584,
+   "secondary": 3751.135634079057,
+   "primary_no_outlier": 21.734862985410302
+  }
+ },
+ "median_dT_C": 0.12015724182128906
+}

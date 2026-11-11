@@ -1,6 +1,6 @@
 # Battery lifetime from the first 100 cycles, with intervals you can act on
 
-**Result:** on 124 commercial lithium-ion cells, a model that sees only the first 100 charge–discharge cycles predicts each cell's lifetime with a **90% interval that holds its coverage on held-out cells** (39 of 43 inside on the primary test set, 35 of 40 on a batch cycled about a year later). Used as a screening rule ("does this cell last at least 800 cycles?"), the intervals let **53 of 83 test cells stop at cycle 100 with one wrong call**, saving **58% of the total test cycles**. Trusting the point prediction alone stops every test but makes **four wrong calls**.
+**Result:** on 124 commercial lithium-ion cells, a model that sees only the first 100 charge–discharge cycles predicts each cell's lifetime with a **90% interval that holds its coverage on held-out cells** (39 of 43 inside on the primary test set, 35 of 40 on a batch cycled about a year later). Used as a screening rule ("does this cell last at least 800 cycles?"), the intervals let **53 of 83 test cells stop at cycle 100 with one wrong call**, saving **58% of the total test cycles**. Trusting the point prediction alone stops every test but makes **four wrong calls**. Physically, the early warning sign is a voltage sag of a few millivolts that internal resistance does not explain; and a stress model of the graphite particles links harsher charging protocols to shorter lives in the later batch.
 
 Data: K. A. Severson, P. M. Attia, N. Jin et al., *Data-driven prediction of battery cycle life before capacity degradation*, Nature Energy 4, 383–391 (2019), [doi:10.1038/s41560-019-0356-8](https://doi.org/10.1038/s41560-019-0356-8); dataset from the Toyota Research Institute at [data.matr.io/1](https://data.matr.io/1/). The data are not redistributed here (see *Reproduce*). All modelling code in this repository is my own; the original study's licensed modelling code was not used.
 
@@ -75,6 +75,33 @@ A screening question: does each cell last at least L\* cycles? Two rules, applie
 
 The point rule saves more test time (88%) but gets 5–10% of cells wrong. The interval rule keeps testing exactly the cells whose fate is uncertain, the ones near the requirement, and stops the rest with almost no errors. Which trade-off is better depends on what a wrong call costs. The intervals make that choice explicit instead of hidden.
 
+## Stage 5: what the early signal is, physically
+
+Severson et al. attribute the early-life change in the discharge curve to loss of graphite active material and loss of lithium, based on separate low-rate diagnostic tests; they report no model of it. Here the 4C discharge curves at cycles 10 and 100 are compared at equal delivered charge, and the change is tested against three mechanisms (`src/physics.py`).
+
+![Voltage fade](figures/fig4_voltage_fade.png)
+
+- **The early signal is mainly a voltage sag.** Between cycles 10 and 100, a cell's discharge voltage at the same delivered charge drops by a median of **4.9 mV**, growing towards the end of discharge. Short-lived cells sag more at every point of the curve.
+- **It is not ohmic resistance.** The cells' internal resistance, measured independently, rose by only enough to explain a median **0.3 mV**, and that rise has no relationship with lifetime (Spearman ρ = 0.07). The sag itself tracks lifetime closely (ρ = −0.86), as does the small capacity loss fitted alongside it (ρ = −0.90). The cells' temperature during discharge changed by a median 0.12 °C, too little to explain the sag.
+- **That points to the electrodes' reactions, as Severson et al. proposed, but the 4C data cannot pin down which.** A Butler–Volmer model of lost graphite surface area, whose extra overpotential grows as the graphite empties, fits the measured sag (median R² = 0.963), but no better than a uniform voltage shift plus capacity loss (0.959). The two cannot be told apart from fast-discharge curves; the low-rate diagnostic cycles the original authors used would be needed.
+- **The later batch ages differently.** Batch 3 cells sag a median **1.7 mV**, against 6–7 mV in batches 1–2. This is the physical face of the batch shift seen in stages 2–3, and it is why these two physical quantities, though interpretable, predict lifetime worse than the statistical feature: 20.7% error on the primary set against 14.7%, and they fail on batch 3, whose values lie outside the training range.
+
+## Stage 6: mechanics, the stress inside graphite particles during fast charging
+
+When a cell charges, lithium enters the graphite particles through their surfaces and diffuses inward slowly, so the surface swells more than the core. Treated like a thermal-stress problem for an elastic sphere, a constant charging current settles within about 30 s into a parabolic lithium profile, and the hoop stress at the surface is
+
+```latex
+\sigma = \frac{E\,\Omega\,R^{2}\,n\,c_{\max}\,\Delta\theta}{45 \cdot 3600\,(1-\nu)\,D}
+```
+
+where n is the charge rate in C, E and ν the elastic constants, Ω the partial molar volume of lithium, R the particle radius, D the diffusivity, c_max the maximum lithium concentration and Δθ the lithium fraction swing (`src/mechanics.py`). With typical graphite values (E = 15 GPa, ν = 0.3, Ω = 3.65 × 10⁻⁶ m³/mol, R = 5 µm, D = 3.9 × 10⁻¹⁴ m²/s), that is **7.4 MPa per unit of C-rate**, so the 72 protocols put the particles under **27–59 MPa** at their fastest step. The material constants are uncertain by a factor of 10–20 either way, so the absolute stress is indicative; the ordering of protocols is not, because stress scales linearly with C-rate.
+
+![Particle stress](figures/fig5_particle_stress.png)
+
+- In batch 3, protocols with higher peak stress gave shorter lives (Spearman ρ = −0.57, p = 0.0001). In batches 1–2 they did not (ρ = 0.05), but the charge-weighted average stress did (ρ = −0.40, p = 0.0002).
+- Adding peak stress to the six-feature lifetime model changes little: primary-set error excluding the outlier goes from 9.4% to 8.6%, and the batch-3 error stays at 12.0%.
+- Stress is not separable from the other effects of fast charging in this dataset. Heating and lithium plating also scale with C-rate, so these correlations show that harsher protocols age cells faster, not that particle cracking is the cause. Separating the mechanisms would need post-mortem imaging of the electrodes or cells charged at equal C-rate but different particle sizes.
+
 ## Limitations
 
 - **One chemistry, one lab.** All cells are the same commercial LFP/graphite type, cycled at 30 °C under fast-charging protocols. Nothing here shows the intervals transfer to other chemistries, temperatures or usage.
@@ -82,7 +109,8 @@ The point rule saves more test time (88%) but gets 5–10% of cells wrong. The i
 - **Jackknife+ guarantees rest on exchangeability.** The later batch breaks that assumption, which is exactly why it is tested separately here. Coverage held approximately, but there is no guarantee for future batches.
 - **The decision rule is deliberately simple.** It stops at cycle 100 or tests to the end. A sequential rule that re-checks the interval as more cycles arrive would save more test time, and is the natural next step.
 - **The one outlier cell** (148 cycles) falls far below its interval. It is still classified correctly at every threshold, but it shows that early-life features can miss an early failure mechanism.
-- **Not a new dataset or model.** The contribution is the reproduction, the calibration check under batch shift, and the decision analysis, all built on Severson et al.'s data and features.
+- **The physical models are deliberately simple.** The voltage-sag model assumes a linear graphite lithium fraction over the discharge (0.80 to 0.02) and a single global kinetic constant; the stress model assumes uniform spherical particles and linear elasticity. They test which explanations fit the data, not the full electrochemistry. A physics-based cell model (for example PyBaMM's Doyle–Fuller–Newman model) fitted to low-rate diagnostic data is the natural next step.
+- **Not a new dataset or model.** The contribution is the reproduction, the calibration check under batch shift, the decision analysis, and the physical and mechanical interpretation, all built on Severson et al.'s data and features.
 
 ## Reproduce
 
@@ -94,7 +122,10 @@ pip install numpy scipy pandas scikit-learn matplotlib h5py
 python src/baseline.py        # stage 1: reproduce the three published models
 python src/intervals.py       # stage 2: interval coverage on both test sets
 python src/shift_decision.py  # stages 3-4: retraining under batch shift, screening decision
+python src/physics.py         # stage 5: voltage sag vs resistance, kinetic model
+python src/mechanics.py       # stage 6: particle stress per charging protocol
 python src/figures.py
+python src/figures_physics.py
 ```
 
 | File | Purpose |
@@ -105,7 +136,9 @@ python src/figures.py
 | `src/baseline.py` | Variance, discharge and full models; errors per split |
 | `src/intervals.py` | Naive, Bayesian ridge and jackknife+ intervals; coverage |
 | `src/shift_decision.py` | Retraining under batch shift; screening decision |
-| `src/figures.py` | Figures 1–3 |
+| `src/physics.py` | Voltage sag at equal charge; resistance check; Butler–Volmer area-loss model |
+| `src/mechanics.py` | Diffusion-induced stress in graphite particles for each charging protocol |
+| `src/figures.py`, `src/figures_physics.py` | Figures 1–3 and 4–5 |
 
 ## Author
 
