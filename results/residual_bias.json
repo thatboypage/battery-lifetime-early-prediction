@@ -1,0 +1,14 @@
+{
+ "train": {
+  "mean_log_residual": -5.848979837049605e-16,
+  "median_pct": 0.36143790804756826
+ },
+ "primary": {
+  "mean_log_residual": -0.025598265530380172,
+  "median_pct": -1.378630197219588
+ },
+ "secondary": {
+  "mean_log_residual": -0.02489477442439403,
+  "median_pct": -7.663894412658112
+ }
+}
